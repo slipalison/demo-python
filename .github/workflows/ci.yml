@@ -1,8 +1,16 @@
 name: CI
 
 # A esteira inteira num `uses:` so. Lint, testes com piso de cobertura, imagem
-# varrida antes de publicar, sete varreduras de seguranca, Sonar, e o commit no
-# GitOps — a orquestracao mora em slipalison/github-workflows.
+# varrida antes de publicar, sete varreduras de seguranca, Sonar, a versao
+# semantica decidida pelos commits e o commit no GitOps — a orquestracao mora em
+# slipalison/github-workflows.
+#
+# A VERSAO VEM DOS COMMITS (2026-09-13). Ninguem escreve numero: `feat:` sobe o
+# minor, `feat!:` o major, o resto o patch. A esteira cria a tag vX.Y.Z, a
+# release, aponta ghcr.io/slipalison/demo-python:<versao> para o mesmo digest
+# que sha-<commit> e escreve `versao` no GitOps. Commit fora do Conventional
+# Commits REPROVA o run — e o padrao. O hook em github-workflows/hooks recusa a
+# mensagem antes de o commit existir.
 #
 # O QUE MUDOU EM 2026-09-13
 # -------------------------
@@ -40,8 +48,11 @@ jobs:
     # leitura. Sem `packages: write` o run morre em startup_failure com
     # "requesting 'packages: write', but is only allowed 'packages: read'" — que
     # nao aparece no log de passo nenhum, so na tela do run.
+    #
+    # `contents: write` e para a tag e a release: existe num job so (lancar), o
+    # ultimo da esteira, e nunca em pull request.
     permissions:
-      contents: read
+      contents: write
       packages: write
       security-events: write
       actions: read
