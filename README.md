@@ -107,7 +107,19 @@ esperava por um motivo que não se sustenta: `docker build` não depende de
 cluster**, e quem impede isso é o `publicar`. Uma tag `sha-<commit>` no registro
 de um commit que falhou não machuca ninguém: o GitOps nunca a aponta.
 
-Medido aqui: ~2min40 em fila, ~1min30 em paralelo.
+Medido aqui em 2026-09-13, e o número honesto não é o que a intuição sugere:
+
+| | Jobs | Relógio |
+|---|---|---|
+| Esteira antiga, em fila | 3 | **78s** |
+| Esteira nova, em paralelo | 13 | **100s** |
+
+A nova é 22 segundos **mais lenta** — e faz sete varreduras de segurança, Sonar
+e piso de cobertura que a antiga não fazia. Em fila, esses mesmos jobs dariam
+~5 minutos. O paralelismo não encurtou o que já existia; absorveu o que faltava.
+
+O job da imagem subiu de 43s para 79s de propósito: agora ele constrói, varre e
+só então publica.
 
 **O que a esteira nova pegou no primeiro run**, e vale como amostra do que ela
 faz: `DS-0002` no `Dockerfile` — nenhum `USER`. Dentro deste cluster não tinha
