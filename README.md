@@ -1,0 +1,145 @@
+# demo-python
+
+Aplicação mínima em Python — FastAPI com front-end renderizado no servidor, sem
+JavaScript de build — que existe para **exercitar a esteira de CI/CD de ponta a
+ponta**: commit → testes → imagem → GitOps → ArgoCD → canary.
+
+A tela mostra a versão da imagem e o nome do pod que respondeu. Durante um
+canary, recarregar troca o pod, e o selo muda de versão conforme o peso do
+tráfego — que é a forma mais direta de ver o rollout acontecendo.
+
+```
+GET /            página (HTML renderizado por Jinja2)
+GET /api/info    o mesmo em JSON — útil para gerar carga durante o canary
+GET /healthz     sonda de readiness e liveness
+GET /api/docs    OpenAPI
+```
+
+---
+
+## Rodar localmente
+
+```bash
+python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+uvicorn app.main:app --reload --port 8080
+```
+
+Testes e lint, os mesmos que o CI roda:
+
+```bash
+ruff check . && ruff format --check .
+pytest -q
+```
+
+---
+
+## O que foi preciso para isto chegar ao cluster
+
+Esta é a parte que interessa, e a razão de o repositório existir. Nada aqui é
+específico de Python: é o contrato da esteira.
+
+### 1. A aplicação precisa caber nas regras do cluster
+
+Não é o cluster que se adapta ao app.
+
+| Regra | Onde ela mora | O que o app faz |
+|---|---|---|
+| Roda como **não-root**, UID 65532 | `securityContext` do chart | Nada escreve em `$HOME`; nenhum arquivo tem dono fixo |
+| Sistema de arquivos **somente leitura** | `readOnlyRootFilesystem: true` | `PYTHONDONTWRITEBYTECODE=1`, nada gravado em disco |
+| Porta **acima de 1024** | Pod não-root não abre porta privilegiada | Uvicorn na `8080`, e `port: 8080` no values |
+| Imagem com **tag imutável** | Política do cluster e schema do chart | O CI usa `sha-<7>`; `latest` é recusada por schema |
+| `requests` e `limits` declarados | Política do cluster | Definidos no values |
+| Uma sonda HTTP que responda rápido | `readinessProbe`/`livenessProbe` | `/healthz`, que só diz que o processo está de pé |
+
+O `Dockerfile` é multi-stage por causa da primeira linha dessa tabela: as
+dependências são instaladas numa camada que some, e a imagem final não tem
+`pip` nem compilador.
+
+**A sonda é deliberadamente burra.** Ela não verifica banco nem serviço
+externo: uma sonda que checa dependências derruba o pod quando o banco pisca —
+o oposto do que se quer, porque aí um problema de fora vira um problema de
+dentro.
+
+### 2. O diretório do app no repositório de GitOps
+
+O deploy **falha de propósito** se `apps/demo-python/values.yaml` não existir.
+Quem define o que uma aplicação é — porta, réplicas, limites, hostname — não é
+o pipeline.
+
+```yaml
+name: demo-python
+owner: alison
+image:
+  repository: ghcr.io/slipalison/demo-python
+  tag: sha-0000000        # o CI reescreve esta linha a cada deploy
+port: 8080
+replicas: 2
+probes:
+  readiness: { path: /healthz }
+  liveness:  { path: /healthz }
+```
+
+O resto — Rollout com canary, Service, VirtualService, NetworkPolicy,
+AuthorizationPolicy — vem do chart
+[`app`](https://github.com/slipalison/helm-charts).
+
+### 3. O `ci.yml`, chamando os workflows reutilizáveis
+
+Três chamadas, nenhuma linha de YAML copiada:
+[`python.yml`](https://github.com/slipalison/github-workflows) para lint e
+testes, `build-push.yml` para a imagem, `deploy.yml` para escrever a tag no
+GitOps.
+
+### 4. O segredo `GITOPS_TOKEN`
+
+Token **fine-grained** com `Contents: Read and write` **apenas** no repositório
+de GitOps:
+
+```bash
+gh secret set GITOPS_TOKEN -R slipalison/demo-python
+```
+
+O `GITHUB_TOKEN` automático não serve: ele não alcança outro repositório.
+
+### 5. O pacote da imagem acessível ao cluster
+
+O cluster puxa a imagem sem credencial. Com o pacote privado no GHCR, o pod
+fica em `ImagePullBackOff` — e a mensagem não diz "falta credencial", diz que
+não encontrou a imagem, o que manda quem está depurando para o lado errado.
+
+*Package settings → Change visibility → Public*, uma vez.
+
+---
+
+## O que mudou no resto do projeto por causa deste app
+
+Três coisas que não existiam e faltaram na primeira tentativa:
+
+1. **`python.yml`** nos workflows reutilizáveis. Só havia .NET, e um app em
+   Python teria de trazer o próprio YAML — exatamente o que aqueles workflows
+   existem para evitar.
+2. **`APP_VERSION` injetado pelo chart** (`app` 0.1.2). A aplicação não tinha
+   como saber a própria versão, e um canary que não se enxerga não serve para
+   decidir nada.
+3. **Um `envFrom` só, no chart.** `envFrom` do values e `envFrom` do banco eram
+   dois blocos independentes: um app com os dois renderizava a chave duas vezes
+   no mesmo container, o último vencia e o primeiro sumia sem erro nenhum.
+
+---
+
+## Depois do deploy
+
+```bash
+# a tag chegou ao GitOps?
+git -C homelab-gitops log --oneline -3 -- apps/demo-python/values.yaml
+
+# o ArgoCD sincronizou?
+kubectl -n argocd get app demo-python
+
+# o canary está em que passo?
+kubectl argo rollouts get rollout demo-python -n demo-python
+```
+
+Durante o canary, `curl` repetido em `/api/info` mostra a proporção entre as
+versões — e, de quebra, gera o tráfego de que a análise precisa para concluir.
