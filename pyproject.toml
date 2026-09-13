@@ -8,6 +8,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+# Sem isto, `pytest` (o que o CI roda) nao acha o pacote `app`, enquanto
+# `python -m pytest` (o que se roda a mao) acha — porque o segundo poe o
+# diretorio atual no sys.path e o primeiro nao. Passa local e quebra no CI.
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["app"]

@@ -13,6 +13,16 @@ FROM python:3.13-slim
 # A imagem precisa funcionar com QUALQUER uid: nada de escrever em $HOME, nada
 # de arquivo com dono fixo. Por isso o app fica em /app com permissao de
 # leitura para todos, e nao ha nada para escrever em disco.
+# Pacotes do sistema atualizados. A imagem base do Python e reconstruida com
+# menos frequencia do que as correcoes do Debian saem: no primeiro build deste
+# repositorio o portao do Trivy barrou 3 CRITICAL, todas de pacote de sistema e
+# todas ja corrigidas no repositorio do Debian (perl-base, entre outras).
+#
+# O custo e a reprodutibilidade: duas construcoes da mesma tag podem trazer
+# pacotes diferentes. Para uma aplicacao que se reconstroi a cada commit, e uma
+# troca boa — o contrario significa publicar CVE conhecida de proposito.
+RUN apt-get update  && apt-get upgrade -y --no-install-recommends  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=dependencias /instalado /usr/local
 WORKDIR /app
 COPY app ./app

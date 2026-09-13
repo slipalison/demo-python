@@ -1,3 +1,7 @@
-fastapi==0.120.4
+# starlette fixado acima de 1.1.0 por causa do CVE-2026-48818 (SSRF e roubo de
+# credencial NTLM por caminho UNC no StaticFiles). O portao do Trivy pegou isso
+# no primeiro build — a versao que o fastapi puxava sozinho era a 0.49.3.
+fastapi==0.141.1
+starlette==1.6.0
 uvicorn[standard]==0.41.0
 jinja2==3.1.6
