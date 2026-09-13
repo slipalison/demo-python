@@ -84,12 +84,44 @@ O resto — Rollout com canary, Service, VirtualService, NetworkPolicy,
 AuthorizationPolicy — vem do chart
 [`app`](https://github.com/slipalison/helm-charts).
 
-### 3. O `ci.yml`, chamando os workflows reutilizáveis
+### 3. O `ci.yml`, chamando a esteira
 
-Três chamadas, nenhuma linha de YAML copiada:
-[`python.yml`](https://github.com/slipalison/github-workflows) para lint e
-testes, `build-push.yml` para a imagem, `deploy.yml` para escrever a tag no
-GitOps.
+**Uma** chamada. O `ci.yml` deste repositório tem vinte linhas de configuração e
+nenhuma de orquestração — ela mora em
+[`slipalison/github-workflows`](https://github.com/slipalison/github-workflows).
+
+```
+        ┌─ qualidade   ruff, pytest, piso de cobertura em 80%
+        ├─ imagem      constrói → varre → publica (nessa ordem)
+push ───┼─ sonar       análise + Quality Gate
+        └─ seguranca   7 jobs: Gitleaks, TruffleHog, Semgrep,
+        │              CodeQL, SCA, IaC, SBOM
+        └──────────────────────────────────► publicar  (só na main)
+```
+
+Tudo isso corre **ao mesmo tempo**; só o `publicar` espera.
+
+Antes eram três etapas em fila — `testes` → `imagem` → `publicar` — e a do meio
+esperava por um motivo que não se sustenta: `docker build` não depende de
+`pytest`. O que não pode acontecer é imagem de código reprovado **chegar ao
+cluster**, e quem impede isso é o `publicar`. Uma tag `sha-<commit>` no registro
+de um commit que falhou não machuca ninguém: o GitOps nunca a aponta.
+
+Medido aqui: ~2min40 em fila, ~1min30 em paralelo.
+
+**O que a esteira nova pegou no primeiro run**, e vale como amostra do que ela
+faz: `DS-0002` no `Dockerfile` — nenhum `USER`. Dentro deste cluster não tinha
+efeito (o Rollout já impõe `runAsNonRoot` e UID 65532, e o Pod Security
+`restricted` recusaria o contrário); fora dele tinha, porque `docker run` desta
+imagem em qualquer outra máquina subia como root. Corrigido na origem, com
+`USER 65532` no Dockerfile, e não por exceção no `.trivyignore` — uma lista de
+exceção que cresce é um portão desligado com passos a mais.
+
+**Pendência:** falta o secret `SONAR_TOKEN` aqui, então o Sonar está com
+`sonar_exigir_token: false` e cada run emite um `::warning::` dizendo isso — em
+vez de um job verde que não analisou nada. Ligar exige, nesta ordem: desligar a
+*Automatic Analysis* no SonarCloud (é mutuamente exclusiva com a análise por CI)
+e criar o secret.
 
 ### 4. A credencial para escrever no GitOps
 
