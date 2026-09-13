@@ -22,3 +22,13 @@ jobs:
     uses: slipalison/github-workflows/.github/workflows/build-push.yml@main
     with:
       image: ghcr.io/slipalison/demo-python
+
+  publicar:
+    needs: imagem
+    if: github.ref == 'refs/heads/main'
+    uses: slipalison/github-workflows/.github/workflows/deploy.yml@main
+    with:
+      app: demo-python
+      tag: ${{ needs.imagem.outputs.tag }}
+    secrets:
+      GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}

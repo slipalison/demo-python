@@ -1,7 +1,0 @@
-name: so-testes
-on: [pull_request]
-jobs:
-  testes:
-    uses: slipalison/github-workflows/.github/workflows/python.yml@main
-    with:
-      python_version: "3.13"
