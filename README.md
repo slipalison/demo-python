@@ -112,6 +112,31 @@ não encontrou a imagem, o que manda quem está depurando para o lado errado.
 
 ---
 
+## O que quebrou na primeira tentativa
+
+Seis coisas, e nenhuma delas era o código do app. Ficam aqui porque a próxima
+aplicação vai tropeçar nas mesmas.
+
+| # | Sintoma | Causa |
+|---|---|---|
+| 1 | `startup_failure`, sem log de passo | `aquasecurity/trivy-action@0.28.0` **não existe** — as tags têm prefixo `v`. O workflow nunca tinha rodado |
+| 2 | `startup_failure` de novo | `The workflow is requesting 'packages: write', but is only allowed 'packages: read'`. Quem chama precisa conceder a permissão no job |
+| 3 | `startup_failure` uma terceira vez | O contexto `secrets` **não existe em `if:` de passo** (`Unrecognized named-value: 'secrets'`) |
+| 4 | Job da imagem vermelho | `cannot find ignorefile '.trivyignore'` — o workflow exigia um arquivo que o repositório não tem |
+| 5 | Trivy derrubando o build | Vulnerabilidade **real**: `starlette` 0.49.3 com CVE-2026-48818, e 3 CRITICAL de pacote de sistema na imagem base |
+| 6 | `Rollout` preso em `Degraded` | A tag de placeholder no values (`sha-0000000`) não existia; o ReplicaSet estável nasceu quebrado e o Rollout não promove sobre um estável doente |
+
+As três primeiras têm a mesma característica desagradável: **`startup_failure`
+não produz log de passo nenhum**. A mensagem existe só na tela do run — não sai
+em `gh run view --log`, nem em `--log-failed`.
+
+E a de número 5 é a esteira funcionando: o portão barrou a imagem antes de ela
+chegar ao cluster. `fastapi` puxava `starlette` 0.49.3 sozinho, com SSRF e
+roubo de credencial NTLM por caminho UNC. Depois de fixar a versão e atualizar
+os pacotes do sistema: **25 vulnerabilidades → 3, zero CRITICAL**.
+
+---
+
 ## O que mudou no resto do projeto por causa deste app
 
 Três coisas que não existiam e faltaram na primeira tentativa:
@@ -119,6 +144,10 @@ Três coisas que não existiam e faltaram na primeira tentativa:
 1. **`python.yml`** nos workflows reutilizáveis. Só havia .NET, e um app em
    Python teria de trazer o próprio YAML — exatamente o que aqueles workflows
    existem para evitar.
+0. **`deploy.yml` aceita chave de deploy**, não só token de conta. Uma chave
+   com escrita criada no próprio repositório de GitOps alcança aquele
+   repositório e mais nada, não depende de conta nenhuma e se revoga num
+   clique. É o que este app usa.
 2. **`APP_VERSION` injetado pelo chart** (`app` 0.1.2). A aplicação não tinha
    como saber a própria versão, e um canary que não se enxerga não serve para
    decidir nada.
