@@ -67,21 +67,14 @@ jobs:
         sonar.python.coverage.reportPaths=coverage.xml
         sonar.sources=app
         sonar.tests=tests
-      # PENDENCIA DO DONO, e esta `false` para ficar visivel em vez de mentir.
+      # `sonar_exigir_token` fica no padrao, que e `true`: se o SONAR_TOKEN
+      # sumir deste repositorio, o run FALHA dizendo isso, em vez de ficar verde
+      # sem ter analisado uma linha. O secret foi criado em 2026-09-13.
       #
-      # Falta o secret SONAR_TOKEN neste repositorio. Com `true` (o padrao) o run
-      # FALHA dizendo isso — que e o certo quando o token deveria existir. Aqui
-      # ainda nao existe, entao fica `false`: cada run emite um ::warning:: com o
-      # que falta, em vez de um job verde que nao analisou nada.
-      #
-      # Para ligar de verdade sao duas coisas, nesta ordem:
-      #   1. no SonarCloud, DESLIGAR a "Automatic Analysis" do projeto. Ela e
-      #      mutuamente exclusiva com a analise por CI: com as duas ligadas, o
-      #      scanner falha com "you are running manual analysis while Automatic
-      #      Analysis is enabled";
-      #   2. gerar o token e criar o secret SONAR_TOKEN aqui.
-      # Depois disso, apagar esta linha.
-      sonar_exigir_token: false
+      # O token e um Personal Access Token do SonarCloud (My Account > Access
+      # Tokens). No plano Free nao ha token com escopo por projeto — isso exige
+      # Team — entao ele age com as permissoes da conta inteira. E a razao de o
+      # `semear_secret.py` gravar so onde o secret e de fato consumido.
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       # Chave de deploy com escrita, criada NO homelab-gitops. Alcanca aquele
