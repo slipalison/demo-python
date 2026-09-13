@@ -31,6 +31,15 @@ jobs:
     with:
       image: ghcr.io/slipalison/demo-python
 
-  # O job `publicar` vive na main. Aqui ele esta fora de proposito: sem o
-  # secret GITOPS_TOKEN o run inteiro morre em startup_failure, antes de
-  # qualquer passo — entao nem os testes rodariam.
+  publicar:
+    needs: imagem
+    if: github.ref == 'refs/heads/main'
+    uses: slipalison/github-workflows/.github/workflows/deploy.yml@main
+    with:
+      app: demo-python
+      tag: ${{ needs.imagem.outputs.tag }}
+    secrets:
+      # Chave de deploy com escrita, criada NO homelab-gitops. Alcanca aquele
+      # repositorio e mais nada — diferente de um token de conta, que alcanca
+      # tudo o que a conta alcanca.
+      GITOPS_SSH_KEY: ${{ secrets.GITOPS_SSH_KEY }}
