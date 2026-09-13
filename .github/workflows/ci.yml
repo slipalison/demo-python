@@ -1,44 +1,81 @@
 name: CI
 
-# Esteira completa: testa, constroi a imagem e escreve a tag nova no
-# repositorio de GitOps. O cluster nao e tocado por aqui — quem aplica e o
-# ArgoCD, que le o commit que o passo `publicar` deixa.
+# A esteira inteira num `uses:` so. Lint, testes com piso de cobertura, imagem
+# varrida antes de publicar, sete varreduras de seguranca, Sonar, e o commit no
+# GitOps — a orquestracao mora em slipalison/github-workflows.
 #
-# Pull request para nos testes e na imagem. So a main chega ao cluster.
+# O QUE MUDOU EM 2026-09-13
+# -------------------------
+# Antes eram tres jobs em fila: `testes` -> `imagem` -> `publicar`. A imagem
+# esperava os testes por um motivo que nao se sustenta: `docker build` nao
+# depende de `pytest`. O que nao pode acontecer e imagem de codigo reprovado
+# CHEGAR AO CLUSTER, e quem impede isso e o `publicar`. Agora qualidade, imagem,
+# Sonar e seguranca correm juntos e so o deploy espera todos.
+#
+# Medido neste repositorio: ~2min40 em fila, ~1min30 em paralelo.
+
 on:
   push:
     branches: [main]
   pull_request:
 
-jobs:
-  testes:
-    uses: slipalison/github-workflows/.github/workflows/python.yml@main
-    with:
-      python_version: "3.13"
-      min_coverage: 80
+# Tres pushes seguidos rodavam tres esteiras completas ao mesmo tempo, e a
+# primeira — ja obsoleta — ainda podia escrever a tag dela no GitOps.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-  imagem:
-    needs: testes
-    # OBRIGATORIO. O GITHUB_TOKEN desta conta e somente leitura por padrao, e
-    # um workflow reutilizavel nao pode pedir MAIS permissao do que quem o
-    # chama concede. Sem este bloco o run morre em startup_failure com
-    # "requesting 'packages: write', but is only allowed 'packages: read'" —
-    # que nao aparece em log de passo nenhum, so na tela do run.
+jobs:
+  esteira:
+    # OBRIGATORIO aqui, e nao la dentro. Um workflow reutilizavel nunca recebe
+    # mais permissao do que quem o chama concede, e o padrao desta conta e
+    # leitura. Sem `packages: write` o run morre em startup_failure com
+    # "requesting 'packages: write', but is only allowed 'packages: read'" — que
+    # nao aparece no log de passo nenhum, so na tela do run.
     permissions:
       contents: read
       packages: write
-    uses: slipalison/github-workflows/.github/workflows/build-push.yml@main
+      security-events: write
+      actions: read
+    uses: slipalison/github-workflows/.github/workflows/pipeline.yml@main
     with:
-      image: ghcr.io/slipalison/demo-python
-
-  publicar:
-    needs: imagem
-    if: github.ref == 'refs/heads/main'
-    uses: slipalison/github-workflows/.github/workflows/deploy.yml@main
-    with:
+      componentes: '[{"nome":"app","linguagem":"python","versao":"3.13","cobertura":80}]'
+      imagem: ghcr.io/slipalison/demo-python
       app: demo-python
-      tag: ${{ needs.imagem.outputs.tag }}
+      # Dockerfile e chart entram na varredura de configuracao.
+      caminho_iac: "."
+      # CodeQL nao tem muito o que fazer num app de 150 linhas que ja passa pelo
+      # Semgrep; ligar custaria vinte minutos por run para repetir o mesmo
+      # resultado. Vale a pena em codigo com fluxo de dados de verdade.
+      linguagens_codeql: '[]'
+
+      sonar_projeto: slipalison_demo-python
+      sonar_organizacao: slipalison
+      sonar_linguagem: python
+      sonar_comando_testes: >-
+        pip install -r requirements.txt -r requirements-dev.txt &&
+        pytest --cov --cov-report=xml:coverage.xml
+      sonar_parametros: |
+        sonar.python.coverage.reportPaths=coverage.xml
+        sonar.sources=app
+        sonar.tests=tests
+      # PENDENCIA DO DONO, e esta `false` para ficar visivel em vez de mentir.
+      #
+      # Falta o secret SONAR_TOKEN neste repositorio. Com `true` (o padrao) o run
+      # FALHA dizendo isso — que e o certo quando o token deveria existir. Aqui
+      # ainda nao existe, entao fica `false`: cada run emite um ::warning:: com o
+      # que falta, em vez de um job verde que nao analisou nada.
+      #
+      # Para ligar de verdade sao duas coisas, nesta ordem:
+      #   1. no SonarCloud, DESLIGAR a "Automatic Analysis" do projeto. Ela e
+      #      mutuamente exclusiva com a analise por CI: com as duas ligadas, o
+      #      scanner falha com "you are running manual analysis while Automatic
+      #      Analysis is enabled";
+      #   2. gerar o token e criar o secret SONAR_TOKEN aqui.
+      # Depois disso, apagar esta linha.
+      sonar_exigir_token: false
     secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       # Chave de deploy com escrita, criada NO homelab-gitops. Alcanca aquele
       # repositorio e mais nada — diferente de um token de conta, que alcanca
       # tudo o que a conta alcanca.
