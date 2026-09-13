@@ -36,6 +36,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # tem. O values do GitOps repete este numero em `port`.
 EXPOSE 8080
 
+# USER explicito, e nao so o runAsUser do chart.
+#
+# Nao muda nada dentro DESTE cluster: o pod ja roda com runAsNonRoot e uid 65532
+# vindos do Rollout, e o Pod Security `restricted` recusaria o contrario — e e
+# essa a prova de que a imagem funciona com este uid, porque e assim que ela ja
+# roda hoje. Muda fora dele: um `docker run` desta imagem em qualquer outro
+# lugar subia como root.
+#
+# O numero repete o do chart de proposito. Nada aqui pertence a este uid nem
+# precisa: os arquivos sao copiados com leitura para todos e a aplicacao nao
+# escreve em disco.
+USER 65532
+
 # Um worker so: o Rollout escala por replicas, nao por processo. Dois niveis de
 # escala e um a mais para entender quando algo esta lento.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
