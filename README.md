@@ -72,7 +72,7 @@ name: demo-python
 owner: alison
 image:
   repository: ghcr.io/slipalison/demo-python
-  tag: sha-0000000        # o CI reescreve esta linha a cada deploy
+  tag: sha-ffdb27c        # o CI reescreve esta linha a cada deploy
 port: 8080
 replicas: 2
 probes:
@@ -91,16 +91,25 @@ Três chamadas, nenhuma linha de YAML copiada:
 testes, `build-push.yml` para a imagem, `deploy.yml` para escrever a tag no
 GitOps.
 
-### 4. O segredo `GITOPS_TOKEN`
+### 4. A credencial para escrever no GitOps
 
-Token **fine-grained** com `Contents: Read and write` **apenas** no repositório
-de GitOps:
+Uma **chave de deploy com escrita**, criada no repositório de GitOps e guardada
+como segredo aqui:
 
 ```bash
-gh secret set GITOPS_TOKEN -R slipalison/demo-python
+ssh-keygen -t ed25519 -N "" -f chave -C "ci-deploy-gitops"
+gh repo deploy-key add chave.pub -R slipalison/homelab-gitops --allow-write   --title "CI: escrita da tag de imagem (demo-python)"
+gh secret set GITOPS_SSH_KEY -R slipalison/demo-python < chave
+shred -u chave chave.pub
 ```
 
-O `GITHUB_TOKEN` automático não serve: ele não alcança outro repositório.
+Por que chave e não token de conta: ela alcança **um** repositório e mais nada,
+não depende de usuário nenhum, e se revoga num clique. Um token fine-grained
+também funciona (`GITOPS_TOKEN`), mas vive preso a uma conta — se ela sair ou o
+token expirar, todo app que o usa para de publicar no mesmo dia.
+
+O `GITHUB_TOKEN` automático não serve para nenhum dos dois: ele não alcança
+outro repositório.
 
 ### 5. O pacote da imagem acessível ao cluster
 
@@ -139,19 +148,19 @@ os pacotes do sistema: **25 vulnerabilidades → 3, zero CRITICAL**.
 
 ## O que mudou no resto do projeto por causa deste app
 
-Três coisas que não existiam e faltaram na primeira tentativa:
+Quatro coisas que não existiam e faltaram na primeira tentativa:
 
 1. **`python.yml`** nos workflows reutilizáveis. Só havia .NET, e um app em
    Python teria de trazer o próprio YAML — exatamente o que aqueles workflows
    existem para evitar.
-0. **`deploy.yml` aceita chave de deploy**, não só token de conta. Uma chave
+2. **`deploy.yml` aceita chave de deploy**, não só token de conta. Uma chave
    com escrita criada no próprio repositório de GitOps alcança aquele
    repositório e mais nada, não depende de conta nenhuma e se revoga num
    clique. É o que este app usa.
-2. **`APP_VERSION` injetado pelo chart** (`app` 0.1.2). A aplicação não tinha
+3. **`APP_VERSION` injetado pelo chart** (`app` 0.1.2). A aplicação não tinha
    como saber a própria versão, e um canary que não se enxerga não serve para
    decidir nada.
-3. **Um `envFrom` só, no chart.** `envFrom` do values e `envFrom` do banco eram
+4. **Um `envFrom` só, no chart.** `envFrom` do values e `envFrom` do banco eram
    dois blocos independentes: um app com os dois renderizava a chave duas vezes
    no mesmo container, o último vencia e o primeiro sumia sem erro nenhum.
 
