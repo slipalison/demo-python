@@ -8,8 +8,6 @@ teste que o time aprende a ignorar.
 
 from __future__ import annotations
 
-import importlib
-
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -44,11 +42,49 @@ def test_versao_vem_do_ambiente(monkeypatch):
     canary que não se enxerga não serve para decidir nada.
     """
     monkeypatch.setenv("APP_VERSION", "sha-abc1234")
-    from app import main
+    assert cliente.get("/api/info").json()["versao"] == "sha-abc1234"
+    assert "sha-abc1234" in cliente.get("/").text
 
-    importlib.reload(main)
-    assert main.VERSAO == "sha-abc1234"
-    assert TestClient(main.app).get("/api/info").json()["versao"] == "sha-abc1234"
 
-    monkeypatch.delenv("APP_VERSION")
-    importlib.reload(main)
+def test_metricas_expostas():
+    """O Alloy raspa /metrics por anotacao; se o endereco sumir, ninguem avisa."""
+    r = cliente.get("/metrics")
+    assert r.status_code == 200
+    assert "demo_paginas_servidas_total" in r.text
+    assert "demo_render_segundos" in r.text
+
+
+def test_erro_proposital_devolve_500():
+    assert cliente.get("/api/erro").status_code == 500
+
+
+def test_log_sai_em_json_com_os_campos_certos(capsys):
+    """O log e JSON de uma linha so, e o campo de correlacao chama `trace_id`.
+
+    O nome importa: o datasource Loki deste cluster liga log a trace por um
+    campo derivado com o padrao `"trace_id":"([a-f0-9]+)"`. Renomear a chave
+    nao da erro em lugar nenhum — so desliga o link.
+    """
+    import json
+    import logging
+
+    from app.observabilidade import FormatadorJson
+
+    registro = logging.LogRecord(
+        name="teste",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="oi %s",
+        args=("mundo",),
+        exc_info=None,
+    )
+    registro.campos = {"extra": 1}
+    linha = FormatadorJson().format(registro)
+
+    assert "\n" not in linha
+    dados = json.loads(linha)
+    assert dados["msg"] == "oi mundo"
+    assert dados["level"] == "info"
+    assert dados["extra"] == 1
+    assert {"ts", "logger", "app", "versao"} <= set(dados)

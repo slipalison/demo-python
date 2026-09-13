@@ -5,3 +5,9 @@ fastapi==0.141.1
 starlette==1.6.0
 uvicorn[standard]==0.41.0
 jinja2==3.1.6
+prometheus-client==0.24.1
+# So a API, nao o SDK: quem instrumenta e o operador do OpenTelemetry no
+# cluster, injetando a auto-instrumentacao no pod. A API entra aqui para o log
+# conseguir ler o trace_id do span atual — e, fora do cluster, ela simplesmente
+# nao encontra span nenhum e o log sai sem os campos de correlacao.
+opentelemetry-api==1.39.0
