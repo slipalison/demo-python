@@ -156,10 +156,26 @@ reprovar de verdade.
 **1. A auto-instrumentação do operador não funcionava, e falhava calada.** O
 webhook de admissão do `opentelemetry-operator` estava com `bad certificate` e
 `failurePolicy: Ignore`: o pod nascia sem instrumentação e nada no cluster
-reclamava. A causa é o chart regenerar o certificado a cada sync enquanto o
-`caBundle` do webhook fica congelado por um `ignoreDifferences`. Este app passou
-a instrumentar a si mesmo — dez linhas visíveis em vez de uma dependência
-invisível.
+reclamava. A causa é o chart gerar a CA no `helm template` — o ArgoCD renderiza
+a cada sync, então cada sync inventa uma CA nova — enquanto o `caBundle` do
+webhook fica congelado por um `ignoreDifferences`.
+
+Não tem conserto com ArgoCD: a saída oficial é o `lookup` do Helm, que o ArgoCD
+não tem. **O operador foi removido do cluster em 2026-09-13** (ADR-001 em
+`helm-charts/README.md`). O que ele entregava de concreto era apontar o OTLP
+para o Alloy e nomear o serviço; isso são quatro variáveis de ambiente, e o
+chart `app` 0.2.0 passou a escrevê-las:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT   http://alloy.observability.svc.cluster.local:4318
+OTEL_EXPORTER_OTLP_PROTOCOL   http/protobuf
+OTEL_SERVICE_NAME             demo-python
+OTEL_RESOURCE_ATTRIBUTES      service.version=<tag>,...
+```
+
+Por isso `configurar_traces()` não tem endereço nenhum escrito: o SDK lê essas
+variáveis sozinho, e rodando fora do cluster elas não existem — o tracing
+simplesmente não liga, sem erro e sem coletor para procurar.
 
 **2. A NetworkPolicy do chart bloqueava quem vem buscar as métricas.** O chart
 oferecia a anotação `prometheus.io/scrape` e, ao mesmo tempo, só permitia

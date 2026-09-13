@@ -144,10 +144,15 @@ def configurar_traces(app) -> None:
     Sem OTEL_EXPORTER_OTLP_ENDPOINT no ambiente isto nao faz nada: rodar local
     continua sendo `uvicorn` e pronto, sem coletor para procurar.
 
+    O endereco NAO esta escrito aqui de proposito: quem o fornece e o chart
+    `app`, na variavel OTEL_EXPORTER_OTLP_ENDPOINT. Assim o mesmo codigo roda
+    local sem coletor e no cluster com ele, sem condicional.
+
     Por que aqui e nao pela injecao do operador do OpenTelemetry: o webhook de
     admissao dele estava com "bad certificate" e failurePolicy: Ignore — o pod
-    nascia sem instrumentacao e NADA no cluster reclamava. Dez linhas visiveis
-    valem mais que uma dependencia invisivel que falha calada.
+    nascia sem instrumentacao e NADA no cluster reclamava. O operador foi
+    removido do cluster em 2026-09-13 (ADR-001 em helm-charts/README.md). Dez
+    linhas visiveis valem mais que uma dependencia invisivel que falha calada.
     """
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if not endpoint:
