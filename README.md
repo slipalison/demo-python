@@ -121,6 +121,55 @@ não encontrou a imagem, o que manda quem está depurando para o lado errado.
 
 ---
 
+## Os três sinais, e como conferir cada um
+
+| Sinal | De onde vem | Como conferir |
+|---|---|---|
+| **Logs** | Deste código, em JSON, uma linha por requisição | Grafana → Explore → Loki: `{namespace="demo-python"} \| json \| level="error"` |
+| **Traces** | SDK do OpenTelemetry, ligado em `observabilidade.py` | Grafana → Explore → Tempo → Search → service `demo-python` |
+| **Métricas** | Sidecar do Istio (taxa, erro, latência) + `/metrics` do app | Grafana → Explore → Mimir: `sum(demo_paginas_servidas_total)` |
+
+**O log é JSON por decisão, não por estética.** O Loki guarda a linha como
+está; uma linha humana obriga cada consulta a virar expressão regular, e a
+primeira mudança de formato quebra todas de uma vez.
+
+**E o campo de correlação tem de se chamar `trace_id`.** O datasource Loki
+deste cluster liga log a trace por um campo derivado com o padrão
+`"trace_id":"([a-f0-9]+)"`. `traceId` ou `trace-id` não dão erro em lugar
+nenhum — só desligam o link, silenciosamente.
+
+Uma linha real, do cluster:
+
+```json
+{"ts":"2026-09-13T02:49:07.044+00:00","level":"info","logger":"demo-python.acesso",
+ "msg":"GET /api/info -> 200","app":"demo-python","versao":"sha-22260d5",
+ "trace_id":"fddd5ee8709095881a59c56e62fe7b33","span_id":"7aa4743119188a72",
+ "metodo":"GET","caminho":"/api/info","status":200,"duracao_ms":0.61}
+```
+
+`/api/erro` devolve 500 de propósito: sem uma rota que falha não dá para ver um
+log de erro chegar com o `trace_id` certo, nem para fazer a análise do canary
+reprovar de verdade.
+
+### Duas coisas que só apareceram ligando isto de verdade
+
+**1. A auto-instrumentação do operador não funcionava, e falhava calada.** O
+webhook de admissão do `opentelemetry-operator` estava com `bad certificate` e
+`failurePolicy: Ignore`: o pod nascia sem instrumentação e nada no cluster
+reclamava. A causa é o chart regenerar o certificado a cada sync enquanto o
+`caBundle` do webhook fica congelado por um `ignoreDifferences`. Este app passou
+a instrumentar a si mesmo — dez linhas visíveis em vez de uma dependência
+invisível.
+
+**2. A NetworkPolicy do chart bloqueava quem vem buscar as métricas.** O chart
+oferecia a anotação `prometheus.io/scrape` e, ao mesmo tempo, só permitia
+entrada do namespace do gateway — e o Alloy vive em `observability`. O sintoma
+é discreto: o alvo aparece em `up` **com valor 0** e nenhuma métrica chega.
+Corrigido no chart `app` 0.1.4, liberando a `15020` (o endpoint mesclado do
+sidecar, para onde o próprio istiod reescreve a anotação).
+
+---
+
 ## O que quebrou na primeira tentativa
 
 Seis coisas, e nenhuma delas era o código do app. Ficam aqui porque a próxima
