@@ -136,3 +136,41 @@ class RegistroDeRequisicao:
                     }
                 },
             )
+
+
+def configurar_traces(app) -> None:
+    """Liga o tracing, se houver para onde exportar.
+
+    Sem OTEL_EXPORTER_OTLP_ENDPOINT no ambiente isto nao faz nada: rodar local
+    continua sendo `uvicorn` e pronto, sem coletor para procurar.
+
+    Por que aqui e nao pela injecao do operador do OpenTelemetry: o webhook de
+    admissao dele estava com "bad certificate" e failurePolicy: Ignore — o pod
+    nascia sem instrumentacao e NADA no cluster reclamava. Dez linhas visiveis
+    valem mais que uma dependencia invisivel que falha calada.
+    """
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return
+
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    recurso = Resource.create(
+        {
+            "service.name": os.getenv("OTEL_SERVICE_NAME", "demo-python"),
+            "service.version": os.getenv("APP_VERSION", "desenvolvimento"),
+        }
+    )
+    provedor = TracerProvider(resource=recurso)
+    provedor.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(provedor)
+
+    # A sonda gera um span a cada dez segundos e nao diz nada sobre o sistema.
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="healthz,metrics")
+
+    logging.getLogger("demo-python").info("tracing ligado", extra={"campos": {"otlp": endpoint}})

@@ -11,8 +11,8 @@ Os três sinais de observabilidade, e de onde cada um vem:
   métricas  do sidecar do Istio (taxa, erro, latência) sem o app fazer nada,
             mais as de negócio em /metrics, raspadas pelo Alloy por anotação;
   logs      daqui, em JSON, com trace_id — ver `observabilidade.py`;
-  traces    da auto-instrumentação do OpenTelemetry, injetada pelo operador
-            no cluster. O app não importa SDK nenhum para isso.
+  traces    do SDK do OpenTelemetry, ligado aqui mesmo — e não pela injeção
+            do operador, que falhava calada. Ver `observabilidade.py`.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.templating import Jinja2Templates
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
-from app.observabilidade import RegistroDeRequisicao, configurar_logs
+from app.observabilidade import RegistroDeRequisicao, configurar_logs, configurar_traces
 
 configurar_logs()
 log = logging.getLogger("demo-python")
@@ -65,6 +65,7 @@ RENDER = Histogram(
 
 app = FastAPI(title="demo-python", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(RegistroDeRequisicao)
+configurar_traces(app)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 log.info(

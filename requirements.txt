@@ -6,8 +6,18 @@ starlette==1.6.0
 uvicorn[standard]==0.41.0
 jinja2==3.1.6
 prometheus-client==0.24.1
-# So a API, nao o SDK: quem instrumenta e o operador do OpenTelemetry no
-# cluster, injetando a auto-instrumentacao no pod. A API entra aqui para o log
-# conseguir ler o trace_id do span atual — e, fora do cluster, ela simplesmente
-# nao encontra span nenhum e o log sai sem os campos de correlacao.
+# TRACES NO PROPRIO APP, e nao pela injecao do operador do OpenTelemetry.
+#
+# A auto-instrumentacao do operador funciona por webhook de admissao, e o
+# webhook dele estava com "bad certificate" e failurePolicy: Ignore — ou seja,
+# falhando CALADO: o pod nascia sem instrumentacao nenhuma e nada no cluster
+# dizia por que. (O chart regenera o certificado a cada sync e o caBundle do
+# webhook ficou congelado no antigo.)
+#
+# Instrumentar aqui troca uma dependencia de infraestrutura invisivel por dez
+# linhas visiveis em observabilidade.py. Sem OTEL_EXPORTER_OTLP_ENDPOINT no
+# ambiente, nada disso liga — rodar local continua simples.
 opentelemetry-api==1.39.0
+opentelemetry-sdk==1.39.0
+opentelemetry-exporter-otlp-proto-http==1.39.0
+opentelemetry-instrumentation-fastapi==0.60b0
