@@ -1,7 +1,0 @@
-name: so-imagem
-on: [pull_request]
-jobs:
-  imagem:
-    uses: slipalison/github-workflows/.github/workflows/build-push.yml@main
-    with:
-      image: ghcr.io/slipalison/demo-python
