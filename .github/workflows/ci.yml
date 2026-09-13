@@ -19,6 +19,14 @@ jobs:
 
   imagem:
     needs: testes
+    # OBRIGATORIO. O GITHUB_TOKEN desta conta e somente leitura por padrao, e
+    # um workflow reutilizavel nao pode pedir MAIS permissao do que quem o
+    # chama concede. Sem este bloco o run morre em startup_failure com
+    # "requesting 'packages: write', but is only allowed 'packages: read'" —
+    # que nao aparece em log de passo nenhum, so na tela do run.
+    permissions:
+      contents: read
+      packages: write
     uses: slipalison/github-workflows/.github/workflows/build-push.yml@main
     with:
       image: ghcr.io/slipalison/demo-python
